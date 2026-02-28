@@ -3,7 +3,7 @@ import websockets
 from deep_translator import GoogleTranslator
 
 # Initialize translator globally
-translator = GoogleTranslator(source='auto', target='es')
+translator = GoogleTranslator(source='auto', target='hindi')  # Change 'hindi' to your desired target language
 
 async def translate_handler(websocket):
     print(f"--- Client Connected ---")
