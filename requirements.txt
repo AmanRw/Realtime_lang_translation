@@ -1,0 +1,4 @@
+websockets
+deep-translator
+SpeechRecognition
+pyaudio
