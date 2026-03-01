@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multilingual Chat - Home</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="landing-card">
+            <h1>🌍 Multilingual Chat</h1>
+            <p class="subtitle">Real-time chat with automatic translation</p>
+            
+            <div class="form-group">
+                <label for="username">Your Name:</label>
+                <input type="text" id="username" placeholder="Enter your name" maxlength="20" required>
+            </div>
+            
+            <div class="button-group">
+                <button id="createBtn" class="btn btn-primary">Create Room</button>
+                <div class="divider">
+                    <span>OR</span>
+                </div>
+                <div class="join-section">
+                    <input type="text" id="roomCode" placeholder="Enter room code" maxlength="6" style="text-transform: uppercase;">
+                    <button id="joinBtn" class="btn btn-secondary">Join Room</button>
+                </div>
+            </div>
+            
+            <div id="errorMessage" class="error-message"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+        let currentRoomCode = null;
+        let currentUsername = null;
+
+        // Store username and room code in sessionStorage
+        socket.on('connect', () => {
+            console.log('Connected to server');
+        });
+
+        socket.on('room_created', (data) => {
+            currentRoomCode = data.room_code;
+            currentUsername = document.getElementById('username').value.trim();
+            // Clear any previous language settings when creating new room
+            sessionStorage.removeItem('languageSet');
+            sessionStorage.setItem('roomCode', currentRoomCode);
+            sessionStorage.setItem('username', currentUsername);
+            window.location.href = '/chat';
+        });
+
+        socket.on('room_joined', (data) => {
+            currentRoomCode = data.room_code;
+            currentUsername = document.getElementById('username').value.trim();
+            // Clear any previous language settings when joining new room
+            sessionStorage.removeItem('languageSet');
+            sessionStorage.setItem('roomCode', currentRoomCode);
+            sessionStorage.setItem('username', currentUsername);
+            window.location.href = '/chat';
+        });
+
+        socket.on('error', (data) => {
+            showError(data.message);
+        });
+
+        document.getElementById('createBtn').addEventListener('click', () => {
+            const username = document.getElementById('username').value.trim();
+            if (!username) {
+                showError('Please enter your name');
+                return;
+            }
+            hideError();
+            socket.emit('create_room', { username });
+        });
+
+        document.getElementById('joinBtn').addEventListener('click', () => {
+            const username = document.getElementById('username').value.trim();
+            const roomCode = document.getElementById('roomCode').value.trim().toUpperCase();
+            
+            if (!username) {
+                showError('Please enter your name');
+                return;
+            }
+            if (!roomCode) {
+                showError('Please enter a room code');
+                return;
+            }
+            hideError();
+            socket.emit('join_room', { username, room_code: roomCode });
+        });
+
+        // Allow Enter key to submit
+        document.getElementById('username').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('createBtn').click();
+            }
+        });
+
+        document.getElementById('roomCode').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('joinBtn').click();
+            }
+        });
+
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('errorMessage').style.display = 'none';
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Room</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <div class="room-info">
+                <span class="room-code">Room: <strong id="roomCodeDisplay">---</strong></span>
+                <span class="user-count" id="userCount">Users: 0/2</span>
+            </div>
+            <div id="connectionStatus" class="connection-status">Connecting...</div>
+        </div>
+
+        <div id="languageSelection" class="language-selection-card">
+            <h2>Select Your Language</h2>
+            <div class="form-group">
+                <label for="languageSelect">Preferred Language:</label>
+                <select id="languageSelect" class="language-select">
+                    <option value="en">English</option>
+                    <option value="hi">Hindi</option>
+                    <option value="fr">French</option>
+                    <option value="es">Spanish</option>
+                    <option value="de">German</option>
+                    <option value="ja">Japanese</option>
+                    <option value="zh">Chinese</option>
+                    <option value="ar">Arabic</option>
+                    <option value="pt">Portuguese</option>
+                    <option value="ru">Russian</option>
+                </select>
+            </div>
+            <button id="continueBtn" class="btn btn-primary">Continue to Chat</button>
+        </div>
+
+        <div id="chatArea" class="chat-area" style="display: none;">
+            <div class="messages-container" id="messagesContainer">
+                <!-- Messages will be displayed here -->
+            </div>
+            
+            <div class="message-input-wrapper">
+                <div class="input-hint" id="inputHint" style="display: none;">
+                    💬 Type your message below - it will be automatically translated!
+                </div>
+                <div class="message-input-container" id="messageInputContainer">
+                    <textarea id="messageInput" placeholder="Type your message here... (Press Enter to send, Shift+Enter for new line)" maxlength="500" rows="3" autocomplete="off"></textarea>
+                    <button id="sendBtn" class="btn btn-send">Send</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="errorMessage" class="error-message"></div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+        let roomCode = sessionStorage.getItem('roomCode');
+        let username = sessionStorage.getItem('username');
+        let language = 'en';
+        let languageSet = false;
+
+        // Check if we have required data
+        if (!roomCode || !username) {
+            alert('Missing room information. Redirecting to home...');
+            window.location.href = '/';
+        }
+
+        // Display room code
+        document.getElementById('roomCodeDisplay').textContent = roomCode;
+
+        // Always show language selection when first arriving at chat page
+        // Only skip if we have a saved language AND we're sure it's from the same session
+        const savedLanguage = sessionStorage.getItem('language');
+        const savedLanguageSet = sessionStorage.getItem('languageSet');
+        const savedRoomCode = sessionStorage.getItem('roomCode');
+        
+        // Only restore language if it's for the same room (page refresh scenario)
+        if (savedLanguage && savedLanguageSet === 'true' && savedRoomCode === roomCode) {
+            language = savedLanguage;
+            languageSet = true;
+            // Hide language selection and show chat area
+            const langSelection = document.getElementById('languageSelection');
+            const chatArea = document.getElementById('chatArea');
+            const messageInput = document.getElementById('messageInput');
+            
+            if (langSelection) {
+                langSelection.style.display = 'none';
+            }
+            if (chatArea) {
+                chatArea.style.display = 'flex';
+                chatArea.style.visibility = 'visible';
+            }
+            if (messageInput) {
+                messageInput.style.display = 'block';
+                messageInput.style.visibility = 'visible';
+                messageInput.style.opacity = '1';
+                messageInput.disabled = false;
+                setTimeout(() => {
+                    messageInput.focus();
+                    messageInput.style.background = 'white';
+                }, 200);
+            }
+            
+            // Show input hint
+            const inputHint = document.getElementById('inputHint');
+            if (inputHint) {
+                inputHint.style.display = 'block';
+                setTimeout(() => {
+                    inputHint.style.display = 'none';
+                }, 5000);
+            }
+            
+            addSystemMessage(`Welcome back! Your language is set to ${language.toUpperCase()}.`);
+            addSystemMessage('💬 You can now type messages in the text box below!');
+        } else {
+            // New room or new session - always show language selection
+            // Clear any old language settings
+            sessionStorage.removeItem('languageSet');
+            const langSelection = document.getElementById('languageSelection');
+            if (langSelection) {
+                langSelection.style.display = 'block';
+            }
+            const chatArea = document.getElementById('chatArea');
+            if (chatArea) {
+                chatArea.style.display = 'none';
+            }
+        }
+
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            updateConnectionStatus(true);
+            // Rejoin room if already connected
+            if (roomCode) {
+                socket.emit('join_room', { username, room_code: roomCode });
+            }
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from server');
+            updateConnectionStatus(false);
+        });
+
+        socket.on('room_joined', (data) => {
+            console.log('Room joined:', data);
+        });
+
+        socket.on('language_set', (data) => {
+            console.log('Language set event received:', data);
+            languageSet = true;
+            language = data.language;
+            // Store language in sessionStorage
+            sessionStorage.setItem('language', data.language);
+            sessionStorage.setItem('languageSet', 'true');
+            // Hide language selection
+            const langSelection = document.getElementById('languageSelection');
+            if (langSelection) {
+                langSelection.style.display = 'none';
+            }
+            // Show chat area - FORCE it to be visible
+            const chatArea = document.getElementById('chatArea');
+            const messageInputContainer = document.getElementById('messageInputContainer');
+            const messageInput = document.getElementById('messageInput');
+            
+            if (chatArea) {
+                chatArea.style.display = 'flex';
+                chatArea.style.visibility = 'visible';
+                chatArea.style.opacity = '1';
+                console.log('Chat area should now be visible');
+            }
+            
+            // Ensure message input is visible and focused
+            if (messageInputContainer) {
+                messageInputContainer.style.display = 'flex';
+                messageInputContainer.style.visibility = 'visible';
+                messageInputContainer.style.opacity = '1';
+            }
+            
+            if (messageInput) {
+                messageInput.style.display = 'block';
+                messageInput.style.visibility = 'visible';
+                messageInput.style.opacity = '1';
+                messageInput.disabled = false;
+                // Focus the input after a short delay
+                setTimeout(() => {
+                    messageInput.focus();
+                    messageInput.style.background = 'white';
+                }, 200);
+            }
+            
+            // Show input hint
+            const inputHint = document.getElementById('inputHint');
+            if (inputHint) {
+                inputHint.style.display = 'block';
+                setTimeout(() => {
+                    inputHint.style.display = 'none';
+                }, 5000);
+            }
+            
+            // Re-enable continue button
+            const btn = document.getElementById('continueBtn');
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Continue to Chat';
+            }
+            addSystemMessage(`Welcome! You joined as ${data.username}. Messages will be translated to ${data.language.toUpperCase()}.`);
+            addSystemMessage('💬 You can now type messages in the text box below!');
+        });
+
+        socket.on('user_joined', (data) => {
+            addSystemMessage(`${data.username} joined the room (${data.language})`);
+            updateUserCount(data.user_count);
+        });
+
+        socket.on('user_left', (data) => {
+            addSystemMessage(`${data.username} left the room`);
+            updateUserCount();
+        });
+
+        socket.on('receive_message', (data) => {
+            addMessage(data.from, data.message, data.timestamp, data.from === username);
+        });
+
+        socket.on('error', (data) => {
+            showError(data.message);
+            // Re-enable continue button if it was disabled
+            const btn = document.getElementById('continueBtn');
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Continue to Chat';
+            }
+            if (data.message.includes('not found') || data.message.includes('full')) {
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+            }
+        });
+
+        // Language selection
+        document.getElementById('continueBtn').addEventListener('click', () => {
+            language = document.getElementById('languageSelect').value;
+            if (!language) {
+                showError('Please select a language');
+                return;
+            }
+            console.log('Sending set_language event:', { room_code: roomCode, username: username, language: language });
+            socket.emit('set_language', {
+                room_code: roomCode,
+                username: username,
+                language: language
+            });
+            // Show loading state
+            const btn = document.getElementById('continueBtn');
+            btn.disabled = true;
+            btn.textContent = 'Setting language...';
+            
+            // Fallback: if language_set event doesn't come within 3 seconds, show chat area anyway
+            setTimeout(() => {
+                if (!languageSet) {
+                    console.warn('Language set event not received, showing chat area anyway');
+                    const langSelection = document.getElementById('languageSelection');
+                    const chatArea = document.getElementById('chatArea');
+                    const messageInput = document.getElementById('messageInput');
+                    const messageInputContainer = document.getElementById('messageInputContainer');
+                    
+                    if (langSelection) {
+                        langSelection.style.display = 'none';
+                    }
+                    if (chatArea) {
+                        chatArea.style.display = 'flex';
+                        chatArea.style.visibility = 'visible';
+                    }
+                    if (messageInputContainer) {
+                        messageInputContainer.style.display = 'flex';
+                        messageInputContainer.style.visibility = 'visible';
+                    }
+                    if (messageInput) {
+                        messageInput.style.display = 'block';
+                        messageInput.style.visibility = 'visible';
+                        messageInput.style.opacity = '1';
+                        messageInput.disabled = false;
+                        setTimeout(() => {
+                            messageInput.focus();
+                            messageInput.style.background = 'white';
+                        }, 200);
+                    }
+                    
+                    // Show input hint
+                    const inputHint = document.getElementById('inputHint');
+                    if (inputHint) {
+                        inputHint.style.display = 'block';
+                        setTimeout(() => {
+                            inputHint.style.display = 'none';
+                        }, 5000);
+                    }
+                    
+                    languageSet = true;
+                    sessionStorage.setItem('language', language);
+                    sessionStorage.setItem('languageSet', 'true');
+                    addSystemMessage(`Language set to ${language.toUpperCase()}. You can now start chatting!`);
+                    addSystemMessage('💬 Type your message in the text box below and press Enter or click Send.');
+                    btn.disabled = false;
+                    btn.textContent = 'Continue to Chat';
+                }
+            }, 3000);
+        });
+
+        // Send message
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+        
+        sendBtn.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        
+        // Auto-resize textarea
+        messageInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
+
+        function sendMessage() {
+            if (!languageSet) {
+                showError('Please select your language first');
+                return;
+            }
+
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+            
+            if (!message) {
+                return;
+            }
+
+            socket.emit('send_message', {
+                room_code: roomCode,
+                message: message
+            });
+
+            // Clear and reset textarea
+            messageInput.value = '';
+            messageInput.style.height = 'auto';
+            messageInput.focus();
+        }
+
+        function addMessage(from, message, timestamp, isOwn) {
+            const messagesContainer = document.getElementById('messagesContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isOwn ? 'own-message' : 'other-message'}`;
+            
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <span class="message-sender">${isOwn ? 'You' : from}</span>
+                    <span class="message-time">${timestamp}</span>
+                </div>
+                <div class="message-content">${escapeHtml(message)}</div>
+            `;
+            
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function addSystemMessage(message) {
+            const messagesContainer = document.getElementById('messagesContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message system-message';
+            messageDiv.textContent = message;
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function updateUserCount(count) {
+            const userCountEl = document.getElementById('userCount');
+            if (count !== undefined) {
+                userCountEl.textContent = `Users: ${count}/2`;
+            } else {
+                // Request update by checking room
+                socket.emit('get_user_count', { room_code: roomCode });
+            }
+        }
+
+        function updateConnectionStatus(connected) {
+            const statusEl = document.getElementById('connectionStatus');
+            if (connected) {
+                statusEl.textContent = '● Connected';
+                statusEl.className = 'connection-status connected';
+            } else {
+                statusEl.textContent = '○ Disconnected';
+                statusEl.className = 'connection-status disconnected';
+            }
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            socket.disconnect();
+        });
+    </script>
+</body>
+</html>
