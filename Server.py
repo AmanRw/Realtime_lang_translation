@@ -1,26 +1,27 @@
-import asyncio
-import websockets
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from deep_translator import GoogleTranslator
+import uvicorn
 
-# Initialize translator globally
-translator = GoogleTranslator(source='auto', target='hindi')  # Change 'hindi' to your desired target language
+app = FastAPI()
+translator = GoogleTranslator(source='auto', target='hindi')
 
-async def translate_handler(websocket):
-    print(f"--- Client Connected ---")
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    print("Client connected via FastAPI WebSocket")
     try:
-        async for message in websocket:
-            # message is the text received from the client's STT
-            translated_text = translator.translate(message)
+        while True:
+            # Receive text from client
+            data = await websocket.receive_text()
             
-            print(f"Received: {message} -> Sent: {translated_text}")
-            await websocket.send(translated_text)
-    except websockets.exceptions.ConnectionClosed:
-        print("--- Client Disconnected ---")
-
-async def main():
-    async with websockets.serve(translate_handler, "localhost", 8765):
-        print("Server running on ws://localhost:8765")
-        await asyncio.Future()  # Keep server running
+            # Translate
+            translated_text = translator.translate(data)
+            print(f"Original: {data} -> Translated: {translated_text}")
+            
+            # Send back the translated text
+            await websocket.send_text(translated_text)
+    except WebSocketDisconnect:
+        print("Client disconnected")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    uvicorn.run(app, host="0.0.0.0", port=8000)

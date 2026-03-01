@@ -1,69 +1,58 @@
 import asyncio
 import websockets
 import speech_recognition as sr
-import sys
+from gtts import gTTS
+import pygame
+import io
+
+# Initialize Audio Mixer for TTS playback
+pygame.mixer.init()
+
+def speak_text(text, lang='es'):
+    """Converts text to speech and plays it immediately."""
+    tts = gTTS(text=text, lang=lang)
+    fp = io.BytesIO()
+    tts.write_to_fp(fp)
+    fp.seek(0)
+    pygame.mixer.music.load(fp)
+    pygame.mixer.music.play()
+    while pygame.mixer.music.get_busy():
+        continue
 
 async def stream_audio():
-    uri = "ws://localhost:8765"
-    
-    # 1. Initialize Microphone and Recognizer
+    # FastAPI default WebSocket URL
+    uri = "ws://localhost:8000/ws"
     recognizer = sr.Recognizer()
-    
-    # Diagnostic: Check if the method exists at runtime
-    if not hasattr(recognizer, 'recognize_google'):
-        print("Error: recognize_google method not found. Check your installation.")
-        return
+    mic = sr.Microphone()
 
-    try:
-        mic = sr.Microphone()
-    except OSError:
-        print("Error: No microphone found. Check your hardware/drivers.")
-        return
-
-    # 2. Connect to the WebSocket Server
     try:
         async with websockets.connect(uri) as websocket:
-            print("Successfully connected to Server.")
-            print(">>> START SPEAKING NOW...")
-            
+            print("Connected to FastAPI. Speak now...")
             while True:
                 with mic as source:
-                    # Adjust for ambient noise to improve accuracy
                     recognizer.adjust_for_ambient_noise(source, duration=0.5)
-                    
                     try:
-                        print("Listening (5s window)...")
-                        # Capture audio (timeout stops it from waiting forever)
+                        print("Listening...")
                         audio = recognizer.listen(source, timeout=5, phrase_time_limit=5)
                         
-                        # 3. Convert Voice to Text
-                        # Using 'type: ignore' to silence VS Code warnings
+                        # STT: Voice to Text (Local)
                         text = recognizer.recognize_google(audio) # type: ignore
-                        print(f"You said: {text}")
+                        print(f"You: {text}")
 
-                        # 4. Send to Server & Wait for Translation
+                        # Send to FastAPI
                         await websocket.send(text)
+
+                        # Get Translation from FastAPI
                         translation = await websocket.recv()
-                        
-                        print(f"--- Translation: {translation} ---\n")
+                        print(f"Translator: {translation}")
 
-                    except sr.WaitTimeoutError:
-                        print("No speech detected, still listening...")
-                    except sr.UnknownValueError:
-                        print("Could not understand audio. Try again.")
-                    except sr.RequestError as e:
-                        print(f"Could not request results from Google; {e}")
+                        # TTS: Speak the translation
+                        speak_text(translation)
+
                     except Exception as e:
-                        print(f"Loop Error: {e}")
-
-    except ConnectionRefusedError:
-        print("Error: Server is not running. Start server.py first!")
+                        print(f"Retry: {e}")
     except Exception as e:
         print(f"Connection Error: {e}")
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(stream_audio())
-    except KeyboardInterrupt:
-        print("\nClient stopped by user.")
-        sys.exit()
+    asyncio.run(stream_audio())
